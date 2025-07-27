@@ -1,20 +1,32 @@
 import {NextFunction, Request, Response} from 'express';
 import { LendingModel } from '../models/Lending';
-import { BookModel } from '../models/Book';
+import {BookModel} from '../models/Book';
 import {APIError} from "../errors/ApiError";
+import {logAudit} from "../util/auditLogger";
+import {ReaderModel} from "../models/Reader";
 
 export const lendBook = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { book, reader, dueDate } = req.body;
+        const { book, reader } = req.body;
 
         const lending = new LendingModel({
             book,
             reader,
-            dueDate,
         });
 
         await lending.save();
-        await BookModel.findByIdAndUpdate(book, { available: false });
+
+        const bookDb = await BookModel.findByIdAndUpdate(lending.book, { available: false });
+        if (!bookDb) {
+            throw new APIError(404, "Book not found");
+        }
+
+        const readerDb = await ReaderModel.findById(lending.reader);
+        if (!readerDb) {
+            throw new APIError(404, "Reader not found");
+        }
+
+        await logAudit("LEND_BOOK", `Lent book "${bookDb.title}" to ${readerDb.fullName}`);
 
         res.status(201).json(lending);
     } catch (error) {
@@ -34,11 +46,22 @@ export const returnBook = async (req: Request, res: Response, next: NextFunction
 
         lending.returnDate = new Date();
         lending.isReturned = true;
-
         await lending.save();
-        await BookModel.findByIdAndUpdate(lending.book, { available: true });
+
+        const book = await BookModel.findByIdAndUpdate(lending.book, { available: true });
+        if (!book) {
+            throw new APIError(404, "Book not found");
+        }
+
+        const reader = await ReaderModel.findById(lending.reader);
+        if (!reader) {
+            throw new APIError(404, "Reader not found");
+        }
+
+        await logAudit("RETURN_BOOK", `Returned book "${book.title}" from ${reader.fullName}`);
 
         res.json({ message: 'Book returned successfully' });
+
     } catch (error) {
         next(error);
         // res.status(400).json({ error: 'Failed to return book' });

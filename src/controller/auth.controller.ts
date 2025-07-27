@@ -5,8 +5,6 @@ import bcrypt from 'bcryptjs';
 import jwt, {JsonWebTokenError, JwtPayload, TokenExpiredError} from 'jsonwebtoken';
 import {APIError} from "../errors/ApiError";
 
-const JWT_SECRET = process.env.JWT_SECRET || 'secret_key';
-
 // Constants for token expiration
 const ACCESS_TOKEN_EXPIRATION = "5m"
 const REFRESH_TOKEN_EXPIRATION = "7d"
@@ -40,6 +38,8 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
         // });
         //
         // res.json({ token });
+        user.lastLogin = new Date(); // Update last login time
+        await user.save();
 
         // Create tokens
         const accessToken = createAccessToken(user._id, user.role)
@@ -69,7 +69,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
 
 export const register = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { email, password, role } = req.body;
+        const { name, email, password, role } = req.body;
 
         const existingUser = await UserModel.findOne({ email })
         if (existingUser) {
@@ -77,7 +77,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
-        const user = new UserModel({ email, password: hashedPassword, role });
+        const user = new UserModel({ name, email, password: hashedPassword, role });
 
         await user.save();
 
@@ -149,5 +149,34 @@ export const logout = (req: Request, res: Response, next: NextFunction) => {
         res.status(200).json({ message: "Logged out successfully" })
     } catch (err) {
         next(err)
+    }
+}
+
+export const changePassword = async (req: Request, res: Response, next: NextFunction) => {
+
+    const { userId, currentPassword, newPassword } = req.body;
+
+    try {
+        const user = await UserModel.findById(userId);
+        if (!user) return next(new APIError(401, "Invalid user"));
+
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) return next(new APIError(401, "Invalid password"));
+
+        user.password = await bcrypt.hash(newPassword, 10);
+        await user.save();
+
+        res.json({ message: 'Password updated successfully' });
+    } catch (e) {
+        next(e)
+    }
+};
+
+export const getAllUsers = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const users = await UserModel.find().select("-password");
+        res.status(200).json(users);
+    } catch (e) {
+        next(e)
     }
 }

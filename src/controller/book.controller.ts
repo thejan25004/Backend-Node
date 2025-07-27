@@ -1,6 +1,7 @@
 import {NextFunction, Request, Response} from 'express';
 import { BookModel } from '../models/Book';
 import {APIError} from "../errors/ApiError";
+import {logAudit} from "../util/auditLogger";
 
 export const getAllBooks = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -38,6 +39,7 @@ export const deleteBook = async (req: Request, res: Response, next: NextFunction
     try {
         const deleted = await BookModel.findByIdAndDelete(req.params.id);
         if (!deleted) throw new APIError(404, 'Book not found');
+        await logAudit("DELETE_BOOK", `Deleted book: ${deleted.title}`);
         res.json({ message: 'Book deleted' });
     } catch (error) {
         next(error);

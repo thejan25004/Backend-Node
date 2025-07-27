@@ -5,6 +5,8 @@ import rootRoutes from "./routes";
 import cookieParser from "cookie-parser";
 import cors from "cors"
 import {errorHandler} from "./middlewares/errorHandler";
+import nodeCron from "node-cron";
+import {sendOverdueNotifications} from "./util/sendOverdueNotifications";
 
 dotenv.config()
 const app = express()
@@ -18,14 +20,18 @@ const corsOptions = {
 }
 
 app.use(cors(corsOptions))
-
 app.use(cookieParser())
 app.use(express.json())
 
-const PORT = process.env.PORT
-
 app.use("/api", rootRoutes)
 app.use(errorHandler)
+
+nodeCron.schedule('0 0 */3 * *', async () => {
+    console.log('⏰ Running scheduled job every 3 days: Sending overdue emails...');
+    await sendOverdueNotifications();
+});
+
+const PORT = process.env.PORT
 
 connectDB().then(() => {
     app.listen(PORT, () => {
